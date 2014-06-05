@@ -379,9 +379,6 @@
                 var view    = new this._viewClass('defaultView', this._collection, { page_size: this._perPage }),
                     query   = view['match_set'];
 
-                // Update the current page number.
-                view.page(this._pageNumber - 1);
-
                 if (this._sortBy) {
 
                     // Define the sort by algorithm.
@@ -409,7 +406,7 @@
 
                 // Update the match set with our defined query, and then return the collection.
                 view['match_set'] = query;
-                this._collectionCache = view.getCurrentItems();
+                // this._collectionCache = view.getCurrentItems();
 
                 if (this._debug) {
                     $console.timeEnd(this.TIMING_NAME);
@@ -422,8 +419,12 @@
 
                 }
 
-                view.bufferRender();
-
+                // Update the current page number. this also calls bufferRender()
+                if((this._pageNumber - 1) != view['current_page']){
+                    view.page(this._pageNumber - 1);
+                } else {
+                    view.bufferRender();
+                }
                 // return this._collectionCache;
             }
 
