@@ -21,10 +21,21 @@
          * @function ngPourOver
          * @constructor
          */
-        var service = function ngPourOverCollection(collection) {
+        var service = function ngPourOverCollection(collection, getBufferUrl, renderCallback) {
+            this._renderCallback = renderCallback;
+            this.getBufferUrl = getBufferUrl;
+
+            this._collectionClass = P.BufferedCollection.extend({
+                getBufferUrl: this._getBufferUrl
+            });
 
             // Drop the collection into a PourOver collection.
-            this._collection = new P.Collection(collection);
+            // this._collection = new this._collectionClass(collection);
+            this._collection = collection;
+
+            this._viewClass = PourOver.BufferedView.extend({
+                render: this._renderCallback
+            });
 
         };
 
@@ -331,6 +342,89 @@
 
                 return properties;
 
+            },
+
+            /**
+             * @method render
+             * @return {void}
+             */
+            render: function render() {
+                if (this._debug) {
+                    $console.time(this.TIMING_NAME);
+                }
+
+                if (typeof this._collection === 'undefined') {
+
+                    // Return the item immediately as it may not be initialised yet.
+                    return this;
+
+                }
+
+                // Determine if we can just return the cached collection.
+                if (this._lastIteration === this._currentIteration) {
+
+                    if (this._debug) {
+                        $console.timeEnd(this.TIMING_NAME);
+                    }
+
+                    return this._collectionCache;
+
+                }
+
+                // Update the iteration version.
+                this._lastIteration = this._currentIteration;
+
+                // Load current collection into a PourOver view.
+                /*jshint camelcase: false */
+                var view    = new this._viewClass('defaultView', this._collection, { page_size: this._perPage }),
+                    query   = view['match_set'];
+
+                // Update the current page number.
+                view.page(this._pageNumber - 1);
+
+                if (this._sortBy) {
+
+                    // Define the sort by algorithm.
+                    view.setSort(this._sortBy);
+
+                }
+
+                // Iterate over each defined filter.
+                for (var property in this._filters) {
+
+                    if (this._filters.hasOwnProperty(property)) {
+
+                        var filter = this._collection.filters[property],
+                            model  = this._filters[property];
+
+                        // Perform the query on the collection.
+                        filter.query(model.value);
+
+                        // Concatenate with the other executed queries.
+                        query = query[model.type](filter['current_query']);
+
+                    }
+
+                }
+
+                // Update the match set with our defined query, and then return the collection.
+                view['match_set'] = query;
+                this._collectionCache = view.getCurrentItems();
+
+                if (this._debug) {
+                    $console.timeEnd(this.TIMING_NAME);
+                }
+
+                if (this._sortAscending) {
+
+                    // Reverse the order if we're descending.
+                    this._collectionCache = this._collectionCache.reverse();
+
+                }
+
+                view.bufferRender();
+
+                // return this._collectionCache;
             }
 
         };
