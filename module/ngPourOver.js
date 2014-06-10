@@ -15,31 +15,108 @@
      * @service ngPourOver
      * @param $window {Object}
      */
-    poApp.service('PourOver', function ngPourOverCollection() {
+    poApp.service('PourOver', function ngPourOverCollection($q, $http) {
 
         /**
          * @function ngPourOver
          * @constructor
          */
-        var service = function ngPourOverCollection(collection, getBufferUrl, renderCallback) {
-            this._renderCallback = renderCallback;
-            this.getBufferUrl = getBufferUrl;
-
-            this._collectionClass = P.BufferedCollection.extend({
-                getBufferUrl: this._getBufferUrl
-            });
+        var service = function ngPourOverCollection(collection) {
+            this._collectionClass = this._collectionSuperClass.extend(this._collectionExtender);
 
             // Drop the collection into a PourOver collection.
-            // this._collection = new this._collectionClass(collection);
-            this._collection = collection;
+            this._collection = new this._collectionClass(collection);
+            // this._collection = collection;
 
-            this._viewClass = PourOver.BufferedView.extend({
-                render: this._renderCallback
-            });
+            // this._viewClass = PourOver.BufferedView.extend({
+            //     render: this._renderCallback
+            // });
 
         };
 
         service.prototype = {
+            _collectionSuperClass: P.BufferedCollection,
+
+            _collectionExtender: {
+                getBufferUrl: function () {
+                    return "/public/documents/messages";
+                },
+                preprocessItem: function (item) {
+                    return [item["id"], item]
+                },
+                get: function (cids, raw) {
+                    if (typeof (raw) === "undefined") {
+                        var raw = false
+                    }
+                    var items = $window.PourOver.Collection.prototype.get.call(this, cids),
+                        that = this;
+                    if (raw) {
+                        return items;
+                    }
+                    return _(items).map(function (i) {
+                        var guid = i.id,
+                            new_item;
+                        if (that.buffered_items.hasOwnProperty(guid)) {
+                            var r = _(that.buffered_items[guid]).extend(that.stripFutures(i));
+                            console.log("BUFFER: "+r);
+                            return r;
+                        } else {
+                            console.log("GET "+i);
+                            return i;
+                        }
+                    });
+                },
+                getBy: function (attr_name, vals, sorted, raw) {
+                    if (typeof (raw) === "undefined") {
+                        var raw = false
+                    }
+                    var items = $window.PourOver.Collection.prototype.getBy.call(this, attr_name, vals, sorted),
+                        that = this;
+                    if (raw) {
+                        return items;
+                    }
+                    console.log('getby')
+                    return _(items).map(function (i) {
+                        var guid = i.id,
+                            new_item;
+                        if (that.buffered_items.hasOwnProperty(guid)) {
+                            return _(that.buffered_items[guid]).extend(that.stripFutures(i));
+                        } else {
+                            return i;
+                        }
+                    });
+                },
+                bufferGuids: function (guids) {
+                    var that = this,
+                        guids = _(guids).select(function (g) {
+                            return g && !that.buffered_items.hasOwnProperty(g);
+                        }),
+                        url = this.getBufferUrl()
+                    if (guids.length > 0) {
+                        return $http({
+                            url: url,
+                            cache: true,
+                            method: 'post',
+                            data: {
+                                ids: guids
+                            }
+                        }).success(function (d) {
+                            // debugger;
+                            console.log("HTTP: "+d[0].id+"-"+d.slice(-1).pop().id);
+                            if (_.isArray(d)) {
+                                var items = _(d).map(_.bind(that.preprocessItem, that));
+                                _(items).each(function (i) {
+                                    that.buffered_items[i[0]] = i[1];
+                                });
+                            }
+                        });
+                    } else {
+                        var deferred = $q.defer();
+                        deferred.resolve(false);
+                        return deferred.promise;
+                    }
+                }
+            },
 
             /**
              * @constant DEFAULT_TYPE
@@ -214,7 +291,7 @@
 
                 var SortingAlgorithm = P.Sort.extend({
                     attr: name,
-                    fn:   sortingMethod
+                    fn: sortingMethod
                 });
 
                 this._collection.addSorts([new SortingAlgorithm(name)]);
@@ -289,7 +366,11 @@
                     throw "ngPourOver: Filter '" + property + "' hasn't yet been defined.";
                 }
 
-                this._filters[property] = { property: type, value: value, type: type };
+                this._filters[property] = {
+                    property: type,
+                    value: value,
+                    type: type
+                };
 
             },
 
@@ -376,8 +457,11 @@
 
                 // Load current collection into a PourOver view.
                 /*jshint camelcase: false */
-                var view    = new this._viewClass('defaultView', this._collection, { page_size: this._perPage }),
-                    query   = view['match_set'];
+                // debugger;
+                var view = new this._viewClass('defaultView', this._collection, {
+                        page_size: this._perPage
+                    }),
+                    query = view['match_set'];
 
                 if (this._sortBy) {
 
@@ -392,7 +476,7 @@
                     if (this._filters.hasOwnProperty(property)) {
 
                         var filter = this._collection.filters[property],
-                            model  = this._filters[property];
+                            model = this._filters[property];
 
                         // Perform the query on the collection.
                         filter.query(model.value);
@@ -420,7 +504,7 @@
                 }
 
                 // Update the current page number. this also calls bufferRender()
-                if((this._pageNumber - 1) != view['current_page']){
+                if ((this._pageNumber - 1) != view['current_page']) {
                     view.page(this._pageNumber - 1);
                 } else {
                     view.bufferRender();
@@ -473,8 +557,10 @@
 
             // Load current collection into a PourOver view.
             /*jshint camelcase: false */
-            var view    = new P.View('defaultView', pourOver._collection, { page_size: pourOver._perPage }),
-                query   = view['match_set'];
+            var view = new P.View('defaultView', pourOver._collection, {
+                    page_size: pourOver._perPage
+                }),
+                query = view['match_set'];
 
             // Update the current page number.
             view.page(pourOver._pageNumber - 1);
@@ -492,7 +578,7 @@
                 if (pourOver._filters.hasOwnProperty(property)) {
 
                     var filter = pourOver._collection.filters[property],
-                        model  = pourOver._filters[property];
+                        model = pourOver._filters[property];
 
                     // Perform the query on the collection.
                     filter.query(model.value);
