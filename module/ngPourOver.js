@@ -23,18 +23,55 @@
          */
         var service = function ngPourOverCollection(collection) {
             this._collectionClass = this._collectionSuperClass.extend(this._collectionExtender);
-
             // Drop the collection into a PourOver collection.
             this._collection = new this._collectionClass(collection);
             // this._collection = collection;
+            var extender = this._viewExtender;
+            var that = this;
 
-            // this._viewClass = PourOver.BufferedView.extend({
-            //     render: this._renderCallback
-            // });
+            extender.render = function(c){
+                that._renderCallback(c);
+            };
+
+            this._viewClass = PourOver.BufferedView.extend(extender);
 
         };
 
         service.prototype = {
+            _viewSuperClass: P.BufferedView,
+
+            _viewExtender: {
+                buffer_pages: 2,
+                // render: function(){
+                //   service._renderCallback();
+                // },
+                bufferAroundCurrentPage: function(){
+                  var current_page = this.current_page,
+                      low_bound = current_page - this.buffer_pages > 0 ? current_page - this.buffer_pages : 0,
+                      high_bound = current_page + this.buffer_pages,
+                      range = _.range(low_bound,high_bound + 1),
+                      that = this;
+                  range = _(range).map(function(page){
+                    return _(that.getCurrentItems(page)).pluck("id");
+                  });
+                  var ids = _.flatten(range);
+                  var buffer_deferred = this.collection.bufferGuids(ids);
+                  buffer_deferred.then(function(d){
+                      // if(d){
+                        // typically calls render from here
+                        that.render(that.getCurrentItems());
+                      // }
+                  })
+                },
+                bufferRender: function(){
+                  var ids = _(this.getCurrentItems()).pluck('id'),
+                      buffer_deferred = this.collection.bufferGuids(ids);
+                  buffer_deferred.then(_(function(){
+                    this.render(this.getCurrentItems())
+                  }).bind(this));
+                },
+            },
+
             _collectionSuperClass: P.BufferedCollection,
 
             _collectionExtender: {
@@ -58,10 +95,8 @@
                             new_item;
                         if (that.buffered_items.hasOwnProperty(guid)) {
                             var r = _(that.buffered_items[guid]).extend(that.stripFutures(i));
-                            console.log("BUFFER: "+r);
                             return r;
                         } else {
-                            console.log("GET "+i);
                             return i;
                         }
                     });
@@ -75,7 +110,6 @@
                     if (raw) {
                         return items;
                     }
-                    console.log('getby')
                     return _(items).map(function (i) {
                         var guid = i.id,
                             new_item;
@@ -101,8 +135,6 @@
                                 ids: guids
                             }
                         }).success(function (d) {
-                            // debugger;
-                            console.log("HTTP: "+d[0].id+"-"+d.slice(-1).pop().id);
                             if (_.isArray(d)) {
                                 var items = _(d).map(_.bind(that.preprocessItem, that));
                                 _(items).each(function (i) {
