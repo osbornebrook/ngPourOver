@@ -52,7 +52,7 @@
                       range = _.range(low_bound,high_bound + 1),
                       that = this;
                   range = _(range).map(function(page){
-                    return _(that.getCurrentItems(page)).pluck("id");
+                    return _(that.getCurrentItems(page)).pluck("_id");
                   });
                   var ids = _.flatten(range);
                   var buffer_deferred = this.collection.bufferGuids(ids);
@@ -64,7 +64,7 @@
                   })
                 },
                 bufferRender: function(){
-                  var ids = _(this.getCurrentItems()).pluck('id'),
+                  var ids = _(this.getCurrentItems()).pluck('_id'),
                       buffer_deferred = this.collection.bufferGuids(ids);
                   buffer_deferred.then(_(function(){
                     this.render(this.getCurrentItems())
@@ -79,7 +79,7 @@
                     return "/public/documents/messages";
                 },
                 preprocessItem: function (item) {
-                    return [item["id"], item]
+                    return [item["_id"], item]
                 },
                 get: function (cids, raw) {
                     if (typeof (raw) === "undefined") {
@@ -91,11 +91,11 @@
                         return items;
                     }
                     return _(items).map(function (i) {
-                        var guid = i.id,
+                        var guid = i._id,
                             new_item;
                         if (that.buffered_items.hasOwnProperty(guid)) {
-                            var r = _(that.buffered_items[guid]).extend(that.stripFutures(i));
-                            return r;
+                            i._source = _(that.buffered_items[guid]._source).extend(that.stripFutures(i)._source);;
+                            return i;
                         } else {
                             return i;
                         }
@@ -111,10 +111,11 @@
                         return items;
                     }
                     return _(items).map(function (i) {
-                        var guid = i.id,
+                        var guid = i._id,
                             new_item;
                         if (that.buffered_items.hasOwnProperty(guid)) {
-                            return _(that.buffered_items[guid]).extend(that.stripFutures(i));
+                            i._source = _(that.buffered_items[guid]._source).extend(that.stripFutures(i)._source);;
+                            return i;
                         } else {
                             return i;
                         }
